@@ -1,0 +1,117 @@
+from flask import Blueprint, request, redirect, jsonify, render_template
+import requests
+from src.config import Config
+from src.services.db import save_store_token, get_store_token
+from src.services.shopify import get_order_by_number
+from src.services.openai import generate_ai_response
+
+main_bp = Blueprint('main', __name__)
+
+@main_bp.route("/")
+def index():
+    return render_template("index.html")
+
+@main_bp.route("/install")
+def install():
+    shop_url = request.args.get("shop")
+    if not shop_url:
+        return "Lütfen dükkan URL'sini belirtin. Örn: http://127.0.0.1:3000/install?shop=kargo-store1.myshopify.com"
+
+    auth_url = (
+        f"https://{shop_url}/admin/oauth/authorize?client_id={Config.SHOPIFY_API_KEY}"
+        f"&scope={Config.SHOPIFY_SCOPES}&redirect_uri={Config.REDIRECT_URI}"
+    )
+    return redirect(auth_url)
+
+@main_bp.route("/auth/callback")
+def callback():
+    code = request.args.get("code")
+    shop_url = request.args.get("shop")
+
+    token_url = f"https://{shop_url}/admin/oauth/access_token"
+    payload = {
+        "client_id": Config.SHOPIFY_API_KEY,
+        "client_secret": Config.SHOPIFY_API_SECRET,
+        "code": code,
+    }
+    
+    try:
+        response = requests.post(token_url, json=payload)
+        response_data = response.json()
+
+        if "access_token" in response_data:
+            access_token = response_data["access_token"]
+            
+            success, error_msg = save_store_token(shop_url, access_token)
+            
+            if success:
+                return "Uygulama başarıyla kuruldu ve mağaza bilgileri kaydedildi! Bu pencereyi kapatabilirsiniz."
+            else:
+                return f"Veritabanı hatası: {error_msg}"
+        else:
+            return "Access Token alınamadı. Bir hata oluştu."
+            
+    except Exception as e:
+        return f"Beklenmedik bir hata: {e}"
+
+@main_bp.route("/api/chat")
+def api_chat():
+    shop_url = request.args.get("shop")
+    question = request.args.get("question")
+    order_number = request.args.get("order_id") 
+    
+    if not shop_url or not question or not order_number:
+        return jsonify({"error": "Eksik parametreler: shop, question ve order_id gereklidir."}), 400
+        
+    # 1. Get token from DB
+    access_token = get_store_token(shop_url)
+    if not access_token:
+        if shop_url == Config.TEST_SHOP_URL and Config.TEST_ACCESS_TOKEN:
+             access_token = Config.TEST_ACCESS_TOKEN
+        else:
+            return jsonify({"error": "Mağaza bulunamadı veya yetkisiz."}), 401
+            
+    # 2. Get specific order
+    order = get_order_by_number(shop_url, access_token, order_number)
+    if not order:
+        return jsonify({"error": f"Sipariş bulunamadı (#{order_number}). Lütfen numarayı kontrol edin."}), 404
+        
+    # 3. Generate AI response
+    ai_response = generate_ai_response(order, question)
+    
+    return jsonify({
+        "ai_response": ai_response
+    })
+
+@main_bp.route("/api/validate-order")
+def validate_order():
+    try:
+        shop_url = request.args.get("shop")
+        order_number = request.args.get("order_id")
+        
+        print(f"Validating order: Shop={shop_url}, Order={order_number}")
+        
+        if not shop_url or not order_number:
+            return jsonify({"valid": False, "error": "Eksik parametreler"}), 400
+            
+        access_token = get_store_token(shop_url)
+        if not access_token:
+            if shop_url == Config.TEST_SHOP_URL and Config.TEST_ACCESS_TOKEN:
+                 access_token = Config.TEST_ACCESS_TOKEN
+            else:
+                print("Access token not found")
+                return jsonify({"valid": False, "error": "Mağaza yetkisi yok"}), 401
+                
+        order = get_order_by_number(shop_url, access_token, order_number)
+        if order:
+            customer = order.get('customer')
+            customer_name = customer.get('first_name', 'Müşteri') if customer else 'Müşteri'
+            print(f"Order found: {order.get('id')}, Customer: {customer_name}")
+            return jsonify({"valid": True, "customer_name": customer_name})
+        else:
+            print("Order not found in Shopify")
+            return jsonify({"valid": False, "error": "Sipariş bulunamadı"})
+            
+    except Exception as e:
+        print(f"Error in validate_order: {e}")
+        return jsonify({"valid": False, "error": "Sunucu hatası"}), 500
