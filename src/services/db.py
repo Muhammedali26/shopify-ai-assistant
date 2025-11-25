@@ -19,6 +19,7 @@ def get_supabase_client() -> Client:
         raise ValueError(f"Supabase client oluşturulamadı: {str(e)}")
 
 def save_store_token(shop_url, access_token):
+    """Shopify store'un access token'ını Supabase'e kaydeder."""
     supabase = get_supabase_client()
     try:
         data, error = supabase.table('stores').upsert({
@@ -27,8 +28,8 @@ def save_store_token(shop_url, access_token):
         }, on_conflict='shop_url').execute()
         
         if error and hasattr(error, 'message'):
-             print(f"Database error: {error}")
-             return False, error.message
+            print(f"Database error: {error}")
+            return False, error.message
              
         return True, None
     except Exception as e:
@@ -36,6 +37,7 @@ def save_store_token(shop_url, access_token):
         return False, str(e)
 
 def get_store_token(shop_url):
+    """Shopify store'un access token'ını Supabase'den getirir."""
     supabase = get_supabase_client()
     try:
         response = supabase.table('stores').select('access_token').eq('shop_url', shop_url).execute()
