@@ -1,16 +1,3 @@
-from supabase import create_client, Client
-from src.config import Config
-
-def get_supabase_client() -> Client:
-    url = Config.SUPABASE_URL
-    key = Config.SUPABASE_KEY
-    if not url or not key:
-        raise ValueError("Supabase URL and Key must be set in .env")
-    return create_client(url, key)
-
-def save_store_token(shop_url, access_token):
-    supabase = get_supabase_client()
-    try:
         data, error = supabase.table('stores').upsert({
             'shop_url': shop_url,
             'access_token': access_token
