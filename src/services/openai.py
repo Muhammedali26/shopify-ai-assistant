@@ -70,8 +70,13 @@ def generate_ai_response(order_data, customer_question):
                 {"role": "system", "content": "Sen bir e-ticaret müşteri hizmetleri temsilcisisin."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7
+            temperature=0.7,
+            stream=True # Streaming aktif
         )
-        return response.choices[0].message.content
+        
+        for chunk in response:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
     except Exception as e:
-        return f"OpenAI'dan cevap alınırken bir hata oluştu: {e}"
+        yield f"OpenAI'dan cevap alınırken bir hata oluştu: {e}"

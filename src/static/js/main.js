@@ -80,24 +80,53 @@ async function sendMessage() {
     addMessage(message, 'user');
     inputField.value = '';
 
-    // Loading göster
-    const loadingEl = document.getElementById('loading');
-    loadingEl.style.display = 'block';
+    // Bot için boş bir mesaj balonu oluştur (Streaming için)
+    const messagesDiv = document.getElementById('messages');
+    const botMsgDiv = document.createElement('div');
+    botMsgDiv.classList.add('message', 'bot');
+    botMsgDiv.innerHTML = '<span class="typing-indicator">...</span>'; // Başlangıçta ... göster
+    messagesDiv.appendChild(botMsgDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
     try {
         const response = await fetch(`/api/chat?shop=${currentShop}&order_id=${currentOrder}&email=${encodeURIComponent(currentEmail)}&question=${encodeURIComponent(message)}`);
-        const data = await response.json();
 
-        loadingEl.style.display = 'none';
-
-        if (data.error) {
-            addMessage("Hata: " + data.error, 'bot');
-        } else {
-            addMessage(data.ai_response, 'bot');
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
         }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let isFirstChunk = true;
+        let fullText = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+
+            if (isFirstChunk) {
+                botMsgDiv.innerHTML = ''; // ... işaretini sil
+                isFirstChunk = false;
+            }
+
+            // Markdown benzeri basit formatlama (yeni satırlar için)
+            // Not: Streaming sırasında tam markdown parse etmek zordur, basitçe ekliyoruz.
+            // Daha gelişmişi için tam metin biriktirip parse edilebilir ama şimdilik basit tutalım.
+            const formattedChunk = chunk.replace(/\n/g, '<br>');
+            botMsgDiv.innerHTML += formattedChunk;
+            fullText += chunk;
+
+            // Otomatik kaydır
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Stream bittiğinde son bir kez formatlama yapılabilir (bold vs için)
+        // Şimdilik basit bırakıyoruz.
+
     } catch (error) {
-        loadingEl.style.display = 'none';
-        addMessage("Bir bağlantı hatası oluştu.", 'bot');
+        botMsgDiv.textContent = "Bir bağlantı hatası oluştu.";
         console.error(error);
     }
 }

@@ -1,4 +1,4 @@
-from flask import Blueprint, request, redirect, jsonify, render_template
+from flask import Blueprint, request, redirect, jsonify, render_template, Response, stream_with_context
 import requests
 from src.config import Config
 from src.services.db import save_store_token, get_store_token
@@ -81,12 +81,8 @@ def api_chat():
     if not order:
         return jsonify({"error": f"Sipariş bulunamadı veya bilgiler eşleşmedi."}), 404
         
-    # 3. Generate AI response
-    ai_response = generate_ai_response(order, question)
-    
-    return jsonify({
-        "ai_response": ai_response
-    })
+    # 3. Generate AI response (Streaming)
+    return Response(stream_with_context(generate_ai_response(order, question)), mimetype='text/plain')
 
 @main_bp.route("/api/validate-order")
 def validate_order():
