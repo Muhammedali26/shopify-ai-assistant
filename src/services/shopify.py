@@ -40,3 +40,46 @@ def get_order_by_number(shop_url, access_token, order_number, email=None):
     except Exception as e:
         print(f"Exception in get_order_by_number: {e}")
         return None
+
+def cancel_order(shop_url, access_token, order_id):
+    """Shopify API üzerinden siparişi iptal eder."""
+    url = f"https://{shop_url}/admin/api/2023-10/orders/{order_id}/cancel.json"
+    headers = {
+        "X-Shopify-Access-Token": access_token,
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json={})
+        if response.status_code == 200:
+            return {"success": True, "message": "Sipariş başarıyla iptal edildi."}
+        else:
+            return {"success": False, "message": f"Hata: {response.text}"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+def check_product_stock(shop_url, access_token, product_name):
+    """Ürün ismine göre stok kontrolü yapar."""
+    url = f"https://{shop_url}/admin/api/2023-10/products.json?title={product_name}"
+    headers = {
+        "X-Shopify-Access-Token": access_token,
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            products = response.json().get("products", [])
+            if not products:
+                return "Üzgünüm, bu isimde bir ürün bulamadım."
+            
+            stock_info = []
+            for product in products:
+                for variant in product['variants']:
+                    stock_info.append(f"{product['title']} ({variant['title']}): {variant['inventory_quantity']} adet")
+            
+            return "\n".join(stock_info)
+        else:
+            return "Stok bilgisi alınamadı."
+    except Exception as e:
+        return f"Hata: {str(e)}"

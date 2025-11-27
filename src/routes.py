@@ -82,7 +82,7 @@ def api_chat():
         return jsonify({"error": f"Sipariş bulunamadı veya bilgiler eşleşmedi."}), 404
         
     # 3. Generate AI response (Streaming)
-    return Response(stream_with_context(generate_ai_response(order, question)), mimetype='text/plain')
+    return Response(stream_with_context(generate_ai_response(order, question, shop_url)), mimetype='text/plain')
 
 @main_bp.route("/api/validate-order")
 def validate_order():

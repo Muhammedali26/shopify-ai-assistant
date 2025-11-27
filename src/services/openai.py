@@ -49,34 +49,130 @@ def generate_ai_response(order_data, customer_question):
           - **İstisna:** Eğer müşteri "ürün kusurlu/yırtık/bozuk" diyorsa, 30 gün kuralını esnet ve "Kusurlu ürün teslimatı için çok özür dileriz, hemen ücretsiz değişim veya iade yapalım." de.
     
        B) **KARGO VE TESLİMAT:**
-          - **Hazırlanıyor:** "Siparişiniz şu an depo ekibimiz tarafından özenle hazırlanıyor. En geç 24 saat içinde kargoya verilecektir."
-          - **Kargolandı:** "Harika haber! Siparişiniz yola çıktı. Kargo takip numaranız SMS ile iletilmiştir. Tahmini teslimat 1-2 iş günüdür."
-          - **Teslim Edildi (Ama Müşteri Almadım Diyor):** "Sistemde teslim edildi görünüyor. Rica etsem bina görevlisine veya komşularınıza sorabilir misiniz? Bazen oraya bırakılabiliyor. Bulamazsanız hemen kargo firmasıyla iletişime geçeceğim."
-    
-       C) **İPTAL TALEBİ:**
-          - Eğer kargo durumu 'Hazırlanıyor' ise: "Talebinizi aldım, siparişinizi iptal ediyorum. Ücret iadeniz 3 iş günü içinde kartınıza yansıyacaktır."
-          - Eğer kargo durumu 'Kargolandı' ise: "Siparişiniz kargoya verildiği için şu an iptal edemiyorum. Ancak ürün size ulaştığında teslim almayıp iade edebilirsiniz."
-    
-    3. **GÜVENLİK VE SINIRLAR:**
-       - Asla mağaza politikalarında olmayan bir söz verme (örn: "Size %50 indirim yapayım" deme).
-       - Müşteri hakaret ederse veya çok sinirliyse: "Sizi anlıyorum ve yaşadığınız olumsuz deneyim için üzgünüm. Konuyu daha detaylı incelemesi için Müşteri İlişkileri Yöneticimize aktarıyorum." de.
-       - Sadece Türkçe cevap ver.
+import openai
+import json
+from src.config import Config
+from src.services.shopify import cancel_order, check_product_stock, get_store_token
+
+openai.api_key = Config.OPENAI_API_KEY
+
+def generate_ai_response(order, question, shop_url=None):
+    """
+    OpenAI kullanarak sipariş verilerine göre cevap üretir.
+    Function Calling destekler.
     """
     
+    # Mevcut sipariş durumu özeti
+    order_summary = f"""
+    Sipariş No: {order.get('name')}
+    Durum: {order.get('financial_status')} / {order.get('fulfillment_status') or 'Gönderilmedi'}
+    Toplam: {order.get('total_price')} {order.get('currency')}
+    Ürünler: {', '.join([item['name'] for item in order.get('line_items', [])])}
+    """
+    
+    system_prompt = f"""
+    Sen yardımsever bir e-ticaret asistanısın.
+    Şu anki sipariş bilgileri:
+    {order_summary}
+    
+    Kullanıcı sipariş iptali isterse, önce mutlaka sebep sor ve onay iste.
+    Onay verirse 'cancel_order' fonksiyonunu kullan.
+    Ürün sorarsa 'check_product_stock' fonksiyonunu kullan.
+    """
+    
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "cancel_order",
+                "description": "Mevcut siparişi iptal eder. Sadece kullanıcı açıkça onayladığında kullan.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "reason": {"type": "string", "description": "İptal sebebi"}
+                    },
+                    "required": ["reason"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "check_product_stock",
+                "description": "Bir ürünün stok durumunu kontrol eder.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "product_name": {"type": "string", "description": "Aranan ürünün adı"}
+                    },
+                    "required": ["product_name"]
+                }
+            }
+        }
+    ]
+
     try:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question}
+        ]
+        
+        # 1. İlk çağrı (Fonksiyon kullanmak isteyecek mi?)
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Sen bir e-ticaret müşteri hizmetleri temsilcisisin."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            stream=True # Streaming aktif
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0.7
         )
         
-        for chunk in response:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        response_message = response.choices[0].message
+        
+        # Eğer fonksiyon çağırmak istiyorsa
+        if response_message.tool_calls:
+            # Fonksiyon çağrısını mesaja ekle
+            messages.append(response_message)
+            
+            for tool_call in response_message.tool_calls:
+                function_name = tool_call.function.name
+                function_args = json.loads(tool_call.function.arguments)
+                
+                function_response = "İşlem başarısız."
+                
+                # Access token al
+                access_token = get_store_token(shop_url)
+                
+                if function_name == "cancel_order":
+                    result = cancel_order(shop_url, access_token, order['id'])
+                    function_response = json.dumps(result)
+                    
+                elif function_name == "check_product_stock":
+                    result = check_product_stock(shop_url, access_token, function_args.get("product_name"))
+                    function_response = result
+                
+                # Fonksiyon sonucunu mesaja ekle
+                messages.append({
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "name": function_name,
+                    "content": function_response,
+                })
+            
+            # 2. İkinci çağrı (Sonucu yorumlayıp cevap ver)
+            second_response = openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                stream=True 
+            )
+            
+            for chunk in second_response:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+                    
+        else:
+            # Fonksiyon yoksa normal cevap (Streaming)
+            # Not: İlk response stream=False idi, şimdi içeriğini stream gibi verelim
+            yield response_message.content
 
     except Exception as e:
-        yield f"OpenAI'dan cevap alınırken bir hata oluştu: {e}"
+        yield f"Bir hata oluştu: {e}"
