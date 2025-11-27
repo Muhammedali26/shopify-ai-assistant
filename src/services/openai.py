@@ -1,7 +1,8 @@
 import openai
 import json
 from src.config import Config
-from src.services.shopify import cancel_order, check_product_stock, get_store_token
+from src.services.shopify import cancel_order, check_product_stock
+from src.services.db import get_store_token
 
 openai.api_key = Config.OPENAI_API_KEY
 
