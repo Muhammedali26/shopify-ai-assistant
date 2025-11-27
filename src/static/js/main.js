@@ -3,14 +3,26 @@ let currentOrder = '';
 let currentEmail = '';
 
 async function startChat() {
-    const shopInput = document.getElementById('shop-url').value;
+    // URL'den shop parametresini al
+    const urlParams = new URLSearchParams(window.location.search);
+    const shopFromUrl = urlParams.get('shop');
+
+    // Eğer URL'de yoksa input'tan almaya çalış (fallback)
+    const shopInput = shopFromUrl || document.getElementById('shop-url').value;
+
     const orderInput = document.getElementById('order-input').value;
     const emailInput = document.getElementById('email-input').value;
     const errorDiv = document.getElementById('login-error');
     const btn = document.querySelector('button[onclick="startChat()"]');
 
-    if (!shopInput || !orderInput || !emailInput) {
-        errorDiv.textContent = "Lütfen mağaza URL'si, sipariş numarası ve e-posta adresini girin.";
+    if (!shopInput) {
+        errorDiv.textContent = "Mağaza bilgisi bulunamadı.";
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    if (!orderInput || !emailInput) {
+        errorDiv.textContent = "Lütfen sipariş numarası ve e-posta adresini girin.";
         errorDiv.style.display = 'block';
         return;
     }

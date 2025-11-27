@@ -66,7 +66,9 @@
 
     const iframe = document.createElement('iframe');
     iframe.id = 'ai-support-iframe';
-    iframe.src = APP_URL;
+    // Mağaza URL'sini al (Shopify global değişkeninden)
+    const shopDomain = window.Shopify ? window.Shopify.shop : window.location.hostname;
+    iframe.src = `${APP_URL}?shop=${shopDomain}`;
 
     container.appendChild(iframe);
     document.body.appendChild(container);
