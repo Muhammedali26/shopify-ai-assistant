@@ -32,21 +32,60 @@
 
         <!-- Sohbet Ekranı -->
         <div id="chat-screen">
-            <div class="chat-messages" id="messages">
-                <div class="message bot">
-                    Merhaba! Ben asistanınız. Siparişinizle ilgili size nasıl yardımcı olabilirim?
+            <!DOCTYPE html>
+            <html lang="tr">
+
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Müşteri Destek Portalı</title>
+                <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+            </head>
+
+            <body>
+
+                <div class="container">
+                    <div class="header">
+                        <h1>Müşteri Destek</h1>
+                        <p>7/24 Yapay Zeka Asistanı</p>
+                    </div>
+
+                    <!-- Giriş Ekranı -->
+                    <div id="login-screen">
+                        <div style="text-align: center; margin-bottom: 20px;">
+                            <h2 style="margin: 0; color: #374151;">Hoş Geldiniz</h2>
+                            <p style="color: #6b7280;">Lütfen işlem yapmak istediğiniz sipariş numarasını girin.</p>
+                        </div>
+                        <input type="text" id="shop-url" placeholder="Mağaza URL (örn: kargo-store1.myshopify.com)"
+                            value="kargo-store1.myshopify.com">
+                        <div class="input-group">
+                            <input type="text" id="order-input" placeholder="Sipariş Numarası (Örn: 1001)">
+                        </div>
+                        <div class="input-group" style="margin-top: 10px;">
+                            <input type="email" id="email-input" placeholder="E-posta Adresi (Örn: ahmet@ornek.com)">
+                        </div>
+                        <button onclick="startChat()">Sohbeti Başlat</button>
+                        <div id="login-error" class="error-message"></div>
+                    </div>
+
+                    <!-- Sohbet Ekranı -->
+                    <div id="chat-screen">
+                        <div class="chat-messages" id="messages">
+                            <div class="message bot">
+                                Merhaba! Ben asistanınız. Siparişinizle ilgili size nasıl yardımcı olabilirim?
+                            </div>
+                        </div>
+                        <div class="loading" id="loading">Yazıyor...</div>
+                        <div class="input-area">
+                            <input type="text" id="user-input" placeholder="Bir mesaj yazın..."
+                                onkeypress="handleKeyPress(event)">
+                            <button onclick="sendMessage()">Gönder</button>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div class="loading" id="loading">Yazıyor...</div>
-            <div class="input-area">
-                <input type="text" id="user-input" placeholder="Bir mesaj yazın..." onkeypress="handleKeyPress(event)">
-                <button onclick="sendMessage()">Gönder</button>
-            </div>
-        </div>
-    </div>
 
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+                <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 
-</body>
+            </body>
 
-</html>
+            </html>

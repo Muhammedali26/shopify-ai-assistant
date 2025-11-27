@@ -59,6 +59,7 @@ def api_chat():
     shop_url = request.args.get("shop")
     question = request.args.get("question")
     order_number = request.args.get("order_id") 
+    email = request.args.get("email") # Email parametresi
     
     if not shop_url or not question or not order_number:
         return jsonify({"error": "Eksik parametreler: shop, question ve order_id gereklidir."}), 400
@@ -71,10 +72,14 @@ def api_chat():
         else:
             return jsonify({"error": "Mağaza bulunamadı veya yetkisiz."}), 401
             
-    # 2. Get specific order
-    order = get_order_by_number(shop_url, access_token, order_number)
+    # 2. Get specific order (Email verification included if provided)
+    # Not: Chat sırasında email zorunlu değilse None geçilebilir ama güvenlik için zorunlu olması iyidir.
+    # Şimdilik validate_order'dan geçtiği için burada opsiyonel bırakabiliriz veya zorunlu yapabiliriz.
+    # Güvenlik için burada da kontrol etmek en iyisidir.
+    order = get_order_by_number(shop_url, access_token, order_number, email)
+    
     if not order:
-        return jsonify({"error": f"Sipariş bulunamadı (#{order_number}). Lütfen numarayı kontrol edin."}), 404
+        return jsonify({"error": f"Sipariş bulunamadı veya bilgiler eşleşmedi."}), 404
         
     # 3. Generate AI response
     ai_response = generate_ai_response(order, question)
@@ -88,11 +93,12 @@ def validate_order():
     try:
         shop_url = request.args.get("shop")
         order_number = request.args.get("order_id")
+        email = request.args.get("email") # Email parametresi
         
-        print(f"Validating order: Shop={shop_url}, Order={order_number}")
+        print(f"Validating order: Shop={shop_url}, Order={order_number}, Email={email}")
         
-        if not shop_url or not order_number:
-            return jsonify({"valid": False, "error": "Eksik parametreler"}), 400
+        if not shop_url or not order_number or not email:
+            return jsonify({"valid": False, "error": "Sipariş No ve E-posta gereklidir"}), 400
             
         access_token = get_store_token(shop_url)
         if not access_token:
@@ -102,15 +108,17 @@ def validate_order():
                 print("Access token not found")
                 return jsonify({"valid": False, "error": "Mağaza yetkisi yok"}), 401
                 
-        order = get_order_by_number(shop_url, access_token, order_number)
+        # Email ile doğrulama yap
+        order = get_order_by_number(shop_url, access_token, order_number, email)
+        
         if order:
             customer = order.get('customer')
             customer_name = customer.get('first_name', 'Müşteri') if customer else 'Müşteri'
-            print(f"Order found: {order.get('id')}, Customer: {customer_name}")
+            print(f"Order found and verified: {order.get('id')}, Customer: {customer_name}")
             return jsonify({"valid": True, "customer_name": customer_name})
         else:
-            print("Order not found in Shopify")
-            return jsonify({"valid": False, "error": "Sipariş bulunamadı"})
+            print("Order not found or email mismatch")
+            return jsonify({"valid": False, "error": "Bilgiler eşleşmedi. Lütfen kontrol edin."})
             
     except Exception as e:
         print(f"Error in validate_order: {e}")
