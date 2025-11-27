@@ -47,3 +47,19 @@ def get_store_token(shop_url):
     except Exception as e:
         print(f"Exception fetching from DB: {e}")
         return None
+
+def save_feedback(shop_url, order_id, rating, message_content=None):
+    """Kullanıcı geri bildirimini kaydeder."""
+    supabase = get_supabase_client()
+    try:
+        data = {
+            'shop_url': shop_url,
+            'order_id': str(order_id),
+            'rating': rating, # 'up' veya 'down'
+            'message_content': message_content
+        }
+        supabase.table('feedback').insert(data).execute()
+        return True, None
+    except Exception as e:
+        print(f"Exception saving feedback: {e}")
+        return False, str(e)

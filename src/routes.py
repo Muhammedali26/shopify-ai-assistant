@@ -119,3 +119,27 @@ def validate_order():
     except Exception as e:
         print(f"Error in validate_order: {e}")
         return jsonify({"valid": False, "error": "Sunucu hatası"}), 500
+
+@main_bp.route("/api/feedback", methods=["POST"])
+def api_feedback():
+    try:
+        data = request.json
+        shop_url = data.get("shop")
+        order_id = data.get("order_id")
+        rating = data.get("rating")
+        message = data.get("message")
+        
+        if not shop_url or not rating:
+            return jsonify({"error": "Eksik parametreler"}), 400
+            
+        from src.services.db import save_feedback
+        success, error = save_feedback(shop_url, order_id, rating, message)
+        
+        if success:
+            return jsonify({"status": "success"})
+        else:
+            return jsonify({"error": error}), 500
+            
+    except Exception as e:
+        print(f"Feedback error: {e}")
+        return jsonify({"error": str(e)}), 500
