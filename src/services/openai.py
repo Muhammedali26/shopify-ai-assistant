@@ -2,7 +2,7 @@ import openai
 import json
 from src.config import Config
 from src.services.shopify import cancel_order, check_product_stock, update_shipping_address, add_order_note, create_discount_code, get_order_by_number
-from src.services.db import get_store_token, create_or_update_session
+from src.services.db import get_store_token, create_or_update_session, get_chat_history, add_chat_message
 
 openai.api_key = Config.OPENAI_API_KEY
 
@@ -10,6 +10,7 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
     """
     OpenAI kullanarak cevap üretir.
     Session verisine göre bağlam (Context) değişir.
+    Geçmiş konuşmaları (History) dikkate alır.
     """
     
     # 1. BAĞLAM BELİRLEME (Context)
@@ -154,12 +155,22 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
     ]
 
     try:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question}
-        ]
+        # 2. GEÇMİŞİ ÇEK (History)
+        history = get_chat_history(session_id, limit=6) # Son 6 mesaj (3 tur)
         
-        # 1. İlk çağrı
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Geçmiş mesajları ekle
+        for msg in history:
+            messages.append({"role": msg['role'], "content": msg['content']})
+            
+        # Yeni soruyu ekle
+        messages.append({"role": "user", "content": question})
+        
+        # Kullanıcı mesajını kaydet
+        add_chat_message(session_id, "user", question)
+        
+        # 3. İLK ÇAĞRI
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
@@ -169,6 +180,7 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
         )
         
         response_message = response.choices[0].message
+        full_ai_response = ""
         
         if response_message.tool_calls:
             messages.append(response_message)
@@ -199,10 +211,6 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
                 elif function_name == "cancel_order":
                     # Sadece oturum açmış kullanıcı yapabilir
                     if session_data and session_data.get('order_id'):
-                         # Session'daki order_id'yi kullan (güvenlik için)
-                         # Ancak cancel_order ID istiyor, bizde number var.
-                         # Tekrar order çekip ID almamız lazım veya session'da ID tutmalıyız.
-                         # Basitlik için tekrar çekiyoruz:
                          current_order = get_order_by_number(shop_url, access_token, session_data['order_id'], session_data['email'])
                          if current_order:
                              result = cancel_order(shop_url, access_token, current_order['id'])
@@ -241,7 +249,6 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
                         function_response = "Bu işlem için önce kimlik doğrulaması yapmalısınız."
                     
                 elif function_name == "create_discount_code":
-                    # İndirim kodu oluşturmak için oturum şart değil ama genelde müşteriye verilir.
                     result = create_discount_code(
                         shop_url, 
                         access_token, 
@@ -266,10 +273,20 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
             
             for chunk in second_response:
                 if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                    content = chunk.choices[0].delta.content
+                    full_ai_response += content
+                    yield content
                     
         else:
-            yield response_message.content
+            # Fonksiyon yoksa normal cevap (Streaming)
+            full_ai_response = response_message.content
+            yield full_ai_response
+
+        # AI Mesajını kaydet
+        if full_ai_response:
+            add_chat_message(session_id, "assistant", full_ai_response)
 
     except Exception as e:
-        yield f"Bir hata oluştu: {e}"
+        error_msg = f"Bir hata oluştu: {e}"
+        yield error_msg
+        print(error_msg)

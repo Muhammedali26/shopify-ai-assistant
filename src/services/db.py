@@ -95,3 +95,41 @@ def get_session(session_id):
     except Exception as e:
         print(f"Exception fetching session: {e}")
         return None
+
+def add_chat_message(session_id, role, content):
+    """Sohbet mesajını veritabanına kaydeder."""
+    supabase = get_supabase_client()
+    try:
+        data = {
+            'session_id': session_id,
+            'role': role,
+            'content': content
+        }
+        supabase.table('chat_messages').insert(data).execute()
+        return True, None
+    except Exception as e:
+        print(f"Exception saving message: {e}")
+        return False, str(e)
+
+def get_chat_history(session_id, limit=6):
+    """
+    Oturumun son N mesajını getirir.
+    Limit varsayılan 6 (3 soru - 3 cevap) olarak ayarlandı (Maliyet optimizasyonu).
+    """
+    supabase = get_supabase_client()
+    try:
+        # Son mesajları almak için created_at'e göre tersten sırala, sonra tekrar düzelt
+        response = supabase.table('chat_messages')\
+            .select('role, content')\
+            .eq('session_id', session_id)\
+            .order('created_at', desc=True)\
+            .limit(limit)\
+            .execute()
+            
+        if response.data:
+            # Tersten aldığımız için listeyi düzeltelim (Eskiden yeniye)
+            return response.data[::-1]
+        return []
+    except Exception as e:
+        print(f"Exception fetching history: {e}")
+        return []
