@@ -191,3 +191,29 @@ def create_discount_code(shop_url, access_token, code, amount, type="fixed_amoun
             
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+def get_shop_info(shop_url, access_token):
+    """Mağaza bilgilerini (adres, isim vb.) getirir."""
+    url = f"https://{shop_url}/admin/api/2023-10/shop.json"
+    headers = {
+        "X-Shopify-Access-Token": access_token,
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            shop = response.json().get("shop", {})
+            return {
+                "name": shop.get("name"),
+                "email": shop.get("email"),
+                "address1": shop.get("address1"),
+                "city": shop.get("city"),
+                "zip": shop.get("zip"),
+                "country": shop.get("country"),
+                "phone": shop.get("phone")
+            }
+        return None
+    except Exception as e:
+        print(f"Error fetching shop info: {e}")
+        return None

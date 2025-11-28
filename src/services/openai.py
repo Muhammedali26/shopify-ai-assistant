@@ -1,7 +1,7 @@
 import openai
 import json
 from src.config import Config
-from src.services.shopify import cancel_order, check_product_stock, update_shipping_address, add_order_note, create_discount_code, get_order_by_number
+from src.services.shopify import cancel_order, check_product_stock, update_shipping_address, add_order_note, create_discount_code, get_order_by_number, get_shop_info
 from src.services.db import get_store_token, create_or_update_session, get_chat_history, add_chat_message
 
 openai.api_key = Config.OPENAI_API_KEY
@@ -17,9 +17,19 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
     order_context = ""
     system_instruction = ""
     
+    # Mağaza Bilgilerini Çek (Adres için)
+    access_token = get_store_token(shop_url)
+    shop_info = get_shop_info(shop_url, access_token)
+    
+    shop_address = "Adres bilgisi alınamadı."
+    if shop_info:
+        shop_address = f"{shop_info.get('address1', '')}, {shop_info.get('city', '')}, {shop_info.get('country', '')}"
+    
+    # Politikaları güncelle
+    policy_returns = Config.STORE_POLICY_RETURNS.replace("{SHOP_ADDRESS}", shop_address)
+    
     # Eğer oturumda doğrulanmış bir sipariş varsa, detayları çek
     if session_data and session_data.get('order_id') and session_data.get('email'):
-        access_token = get_store_token(shop_url)
         order = get_order_by_number(shop_url, access_token, session_data['order_id'], session_data['email'])
         
         if order:
@@ -53,7 +63,7 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
 
     system_prompt = f"""
     Sen Kargo Store'un yardımsever ve profesyonel AI asistanısın.
-    {Config.STORE_POLICY_RETURNS}
+    {policy_returns}
     {Config.STORE_POLICY_SHIPPING}
     
     {order_context}
