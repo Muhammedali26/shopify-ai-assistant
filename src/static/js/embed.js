@@ -66,18 +66,36 @@
 
     const iframe = document.createElement('iframe');
     iframe.id = 'ai-support-iframe';
-    // Mağaza URL'sini al (Shopify global değişkeninden)
-    const shopDomain = window.Shopify ? window.Shopify.shop : window.location.hostname;
-    iframe.src = `${APP_URL}?shop=${shopDomain}`;
+    // src'yi henüz atama (Lazy Load)
 
     container.appendChild(iframe);
     document.body.appendChild(container);
 
     // 4. Tıklama Olayı
     let isOpen = false;
+    let isLoaded = false;
+    const shopDomain = window.Shopify ? window.Shopify.shop : window.location.hostname;
+
     btn.addEventListener('click', () => {
+        if (!isLoaded) {
+            iframe.src = `${APP_URL}?shop=${shopDomain}`;
+            isLoaded = true;
+        }
+
         isOpen = !isOpen;
         container.style.display = isOpen ? 'block' : 'none';
+
+        // Buton ikonunu değiştir
+        btn.textContent = isOpen ? '✕' : '💬';
+    });
+
+    // 5. Mesaj Dinleyici (İçeriden kapatma isteği gelirse)
+    window.addEventListener('message', (event) => {
+        if (event.data === 'close-chat') {
+            isOpen = false;
+            container.style.display = 'none';
+            btn.textContent = '💬';
+        }
     });
 
 })();
