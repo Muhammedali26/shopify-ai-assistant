@@ -63,3 +63,35 @@ def save_feedback(shop_url, order_id, rating, message_content=None):
     except Exception as e:
         print(f"Exception saving feedback: {e}")
         return False, str(e)
+
+def create_or_update_session(session_id, shop_url, order_id=None, email=None):
+    """Sohbet oturumunu oluşturur veya günceller."""
+    supabase = get_supabase_client()
+    try:
+        data = {
+            'session_id': session_id,
+            'shop_url': shop_url,
+            'updated_at': 'now()'
+        }
+        if order_id:
+            data['order_id'] = str(order_id)
+        if email:
+            data['email'] = email
+            
+        supabase.table('chat_sessions').upsert(data, on_conflict='session_id').execute()
+        return True, None
+    except Exception as e:
+        print(f"Exception saving session: {e}")
+        return False, str(e)
+
+def get_session(session_id):
+    """Oturum bilgilerini getirir."""
+    supabase = get_supabase_client()
+    try:
+        response = supabase.table('chat_sessions').select('*').eq('session_id', session_id).execute()
+        if response.data and len(response.data) > 0:
+            return response.data[0]
+        return None
+    except Exception as e:
+        print(f"Exception fetching session: {e}")
+        return None

@@ -48,49 +48,6 @@ def callback():
                 return "Uygulama başarıyla kuruldu ve mağaza bilgileri kaydedildi! Bu pencereyi kapatabilirsiniz."
             else:
                 return f"Veritabanı hatası: {error_msg}"
-        else:
-            return "Access Token alınamadı. Bir hata oluştu."
-            
-    except Exception as e:
-        return f"Beklenmedik bir hata: {e}"
-
-@main_bp.route("/api/chat")
-def api_chat():
-    shop_url = request.args.get("shop")
-    question = request.args.get("question")
-    order_number = request.args.get("order_id") 
-    email = request.args.get("email") # Email parametresi
-    
-    if not shop_url or not question or not order_number:
-        return jsonify({"error": "Eksik parametreler: shop, question ve order_id gereklidir."}), 400
-        
-    # 1. Get token from DB
-    access_token = get_store_token(shop_url)
-    if not access_token:
-        if shop_url == Config.TEST_SHOP_URL and Config.TEST_ACCESS_TOKEN:
-             access_token = Config.TEST_ACCESS_TOKEN
-        else:
-            return jsonify({"error": "Mağaza bulunamadı veya yetkisiz."}), 401
-            
-    # 2. Get specific order (Email verification included if provided)
-    # Not: Chat sırasında email zorunlu değilse None geçilebilir ama güvenlik için zorunlu olması iyidir.
-    # Şimdilik validate_order'dan geçtiği için burada opsiyonel bırakabiliriz veya zorunlu yapabiliriz.
-    # Güvenlik için burada da kontrol etmek en iyisidir.
-    order = get_order_by_number(shop_url, access_token, order_number, email)
-    
-    if not order:
-        return jsonify({"error": f"Sipariş bulunamadı veya bilgiler eşleşmedi."}), 404
-        
-    # 3. Generate AI response (Streaming)
-    return Response(stream_with_context(generate_ai_response(order, question, shop_url)), mimetype='text/plain')
-
-@main_bp.route("/api/validate-order")
-def validate_order():
-    try:
-        shop_url = request.args.get("shop")
-        order_number = request.args.get("order_id")
-        email = request.args.get("email") # Email parametresi
-        
         print(f"Validating order: Shop={shop_url}, Order={order_number}, Email={email}")
         
         if not shop_url or not order_number or not email:

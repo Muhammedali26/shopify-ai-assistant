@@ -1,36 +1,81 @@
 import openai
 import json
 from src.config import Config
-from src.services.shopify import cancel_order, check_product_stock
-from src.services.db import get_store_token
+from src.services.shopify import cancel_order, check_product_stock, update_shipping_address, add_order_note, create_discount_code, get_order_by_number
+from src.services.db import get_store_token, create_or_update_session
 
 openai.api_key = Config.OPENAI_API_KEY
 
-def generate_ai_response(order, question, shop_url=None):
+def generate_ai_response(session_id, shop_url, question, session_data=None):
     """
-    OpenAI kullanarak sipariş verilerine göre cevap üretir.
-    Function Calling destekler.
-    """
-    
-    # Mevcut sipariş durumu özeti
-    order_summary = f"""
-    Sipariş No: {order.get('name')}
-    Durum: {order.get('financial_status')} / {order.get('fulfillment_status') or 'Gönderilmedi'}
-    Toplam: {order.get('total_price')} {order.get('currency')}
-    Ürünler: {', '.join([item['name'] for item in order.get('line_items', [])])}
+    OpenAI kullanarak cevap üretir.
+    Session verisine göre bağlam (Context) değişir.
     """
     
+    # 1. BAĞLAM BELİRLEME (Context)
+    order_context = ""
+    system_instruction = ""
+    
+    # Eğer oturumda doğrulanmış bir sipariş varsa, detayları çek
+    if session_data and session_data.get('order_id') and session_data.get('email'):
+        access_token = get_store_token(shop_url)
+        order = get_order_by_number(shop_url, access_token, session_data['order_id'], session_data['email'])
+        
+        if order:
+            order_context = f"""
+            --- AKTİF SİPARİŞ BİLGİSİ ---
+            Sipariş No: {order.get('name')}
+            Durum: {order.get('financial_status')} / {order.get('fulfillment_status') or 'Gönderilmedi'}
+            Toplam: {order.get('total_price')} {order.get('currency')}
+            Ürünler: {', '.join([item['name'] for item in order.get('line_items', [])])}
+            Müşteri Notu: {order.get('note') or 'Yok'}
+            Teslimat Adresi: {order.get('shipping_address', {}).get('address1', '')}, {order.get('shipping_address', {}).get('city', '')}
+            -----------------------------
+            """
+            system_instruction = """
+            Şu an doğrulanmış bir müşteriyle konuşuyorsun. Sipariş detaylarına tam erişimin var.
+            Müşteri siparişle ilgili işlem yapmak isterse (iptal, adres vb.) yardımcı ol.
+            """
+        else:
+            # Sipariş bulunamadıysa (belki iptal edildi veya silindi)
+            system_instruction = "Kullanıcının sipariş kaydı var ama güncel veriye erişilemedi. Tekrar sipariş numarası isteyebilirsin."
+    else:
+        # Henüz giriş yapmamış kullanıcı
+        system_instruction = """
+        Şu an kimliği doğrulanmamış bir ziyaretçiyle konuşuyorsun.
+        Genel sorulara (kargo ücreti, iade politikası, stok durumu) cevap verebilirsin.
+        
+        EĞER kullanıcı "Siparişim nerede?", "İptal et" gibi kişisel bir işlem isterse:
+        "Size yardımcı olabilmem için lütfen sipariş numaranızı ve e-posta adresinizi yazar mısınız?" diye sor.
+        Kullanıcı bu bilgileri verince 'authenticate_customer' fonksiyonunu kullan.
+        """
+
     system_prompt = f"""
-    Sen yardımsever bir e-ticaret asistanısın.
-    Şu anki sipariş bilgileri:
-    {order_summary}
+    Sen Kargo Store'un yardımsever ve profesyonel AI asistanısın.
+    {Config.STORE_POLICY_RETURNS}
+    {Config.STORE_POLICY_SHIPPING}
     
-    Kullanıcı sipariş iptali isterse, önce mutlaka sebep sor ve onay iste.
-    Onay verirse 'cancel_order' fonksiyonunu kullan.
-    Ürün sorarsa 'check_product_stock' fonksiyonunu kullan.
+    {order_context}
+    
+    {system_instruction}
     """
     
     tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "authenticate_customer",
+                "description": "Kullanıcının sipariş numarası ve e-postası ile kimliğini doğrular.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "order_number": {"type": "string", "description": "Sipariş Numarası (örn: 1001)"},
+                        "email": {"type": "string", "description": "Müşteri E-postası"}
+                    },
+                    "required": ["order_number", "email"]
+                }
+            }
+        },
         {
             "type": "function",
             "function": {
@@ -58,6 +103,53 @@ def generate_ai_response(order, question, shop_url=None):
                     "required": ["product_name"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_shipping_address",
+                "description": "Siparişin teslimat adresini günceller.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "address1": {"type": "string", "description": "Sokak, Cadde, No"},
+                        "city": {"type": "string", "description": "Şehir"},
+                        "zip": {"type": "string", "description": "Posta Kodu (Opsiyonel)"},
+                        "country": {"type": "string", "description": "Ülke (Varsayılan: Turkey)"}
+                    },
+                    "required": ["address1", "city"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "add_order_note",
+                "description": "Siparişe not ekler (Hediye paketi, zile basma vb).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "note": {"type": "string", "description": "Eklenecek not"}
+                    },
+                    "required": ["note"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_discount_code",
+                "description": "Müşteriye özel indirim kodu oluşturur.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string", "description": "İndirim kodu (örn: OZEL10)"},
+                        "amount": {"type": "string", "description": "İndirim miktarı (Sayısal)"},
+                        "type": {"type": "string", "enum": ["fixed_amount", "percentage"], "description": "İndirim tipi"}
+                    },
+                    "required": ["code", "amount", "type"]
+                }
+            }
         }
     ]
 
@@ -67,7 +159,7 @@ def generate_ai_response(order, question, shop_url=None):
             {"role": "user", "content": question}
         ]
         
-        # 1. İlk çağrı (Fonksiyon kullanmak isteyecek mi?)
+        # 1. İlk çağrı
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
@@ -78,29 +170,87 @@ def generate_ai_response(order, question, shop_url=None):
         
         response_message = response.choices[0].message
         
-        # Eğer fonksiyon çağırmak istiyorsa
         if response_message.tool_calls:
-            # Fonksiyon çağrısını mesaja ekle
             messages.append(response_message)
             
             for tool_call in response_message.tool_calls:
                 function_name = tool_call.function.name
                 function_args = json.loads(tool_call.function.arguments)
-                
                 function_response = "İşlem başarısız."
                 
-                # Access token al
                 access_token = get_store_token(shop_url)
                 
-                if function_name == "cancel_order":
-                    result = cancel_order(shop_url, access_token, order['id'])
-                    function_response = json.dumps(result)
+                # --- KİMLİK DOĞRULAMA ---
+                if function_name == "authenticate_customer":
+                    order_num = function_args.get("order_number")
+                    email = function_args.get("email")
                     
+                    # Shopify'dan kontrol et
+                    order = get_order_by_number(shop_url, access_token, order_num, email)
+                    
+                    if order:
+                        # Başarılı! Oturumu güncelle
+                        create_or_update_session(session_id, shop_url, order_num, email)
+                        function_response = f"Doğrulama başarılı! Sayın {order.get('customer', {}).get('first_name', 'Müşterimiz')}, siparişinize eriştim. Nasıl yardımcı olabilirim?"
+                    else:
+                        function_response = "Doğrulama başarısız. Lütfen sipariş numarası ve e-posta adresinizi kontrol edin."
+
+                # --- DİĞER FONKSİYONLAR ---
+                elif function_name == "cancel_order":
+                    # Sadece oturum açmış kullanıcı yapabilir
+                    if session_data and session_data.get('order_id'):
+                         # Session'daki order_id'yi kullan (güvenlik için)
+                         # Ancak cancel_order ID istiyor, bizde number var.
+                         # Tekrar order çekip ID almamız lazım veya session'da ID tutmalıyız.
+                         # Basitlik için tekrar çekiyoruz:
+                         current_order = get_order_by_number(shop_url, access_token, session_data['order_id'], session_data['email'])
+                         if current_order:
+                             result = cancel_order(shop_url, access_token, current_order['id'])
+                             function_response = json.dumps(result)
+                         else:
+                             function_response = "Sipariş verisine erişilemedi."
+                    else:
+                         function_response = "Bu işlem için önce kimlik doğrulaması yapmalısınız."
+
                 elif function_name == "check_product_stock":
                     result = check_product_stock(shop_url, access_token, function_args.get("product_name"))
                     function_response = result
+                    
+                elif function_name == "update_shipping_address":
+                    if session_data and session_data.get('order_id'):
+                        current_order = get_order_by_number(shop_url, access_token, session_data['order_id'], session_data['email'])
+                        if current_order:
+                            address_data = {
+                                "address1": function_args.get("address1"),
+                                "city": function_args.get("city"),
+                                "zip": function_args.get("zip", ""),
+                                "country": function_args.get("country", "Turkey")
+                            }
+                            result = update_shipping_address(shop_url, access_token, current_order['id'], address_data)
+                            function_response = json.dumps(result)
+                    else:
+                        function_response = "Bu işlem için önce kimlik doğrulaması yapmalısınız."
+                    
+                elif function_name == "add_order_note":
+                    if session_data and session_data.get('order_id'):
+                        current_order = get_order_by_number(shop_url, access_token, session_data['order_id'], session_data['email'])
+                        if current_order:
+                            result = add_order_note(shop_url, access_token, current_order['id'], function_args.get("note"))
+                            function_response = json.dumps(result)
+                    else:
+                        function_response = "Bu işlem için önce kimlik doğrulaması yapmalısınız."
+                    
+                elif function_name == "create_discount_code":
+                    # İndirim kodu oluşturmak için oturum şart değil ama genelde müşteriye verilir.
+                    result = create_discount_code(
+                        shop_url, 
+                        access_token, 
+                        function_args.get("code"), 
+                        function_args.get("amount"), 
+                        function_args.get("type")
+                    )
+                    function_response = json.dumps(result)
                 
-                # Fonksiyon sonucunu mesaja ekle
                 messages.append({
                     "tool_call_id": tool_call.id,
                     "role": "tool",
@@ -108,7 +258,6 @@ def generate_ai_response(order, question, shop_url=None):
                     "content": function_response,
                 })
             
-            # 2. İkinci çağrı (Sonucu yorumlayıp cevap ver)
             second_response = openai.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
@@ -120,8 +269,6 @@ def generate_ai_response(order, question, shop_url=None):
                     yield chunk.choices[0].delta.content
                     
         else:
-            # Fonksiyon yoksa normal cevap (Streaming)
-            # Not: İlk response stream=False idi, şimdi içeriğini stream gibi verelim
             yield response_message.content
 
     except Exception as e:
