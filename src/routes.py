@@ -1,7 +1,7 @@
 from flask import Blueprint, request, redirect, jsonify, render_template, Response, stream_with_context
 import requests
 from src.config import Config
-from src.services.db import save_store_token, get_store_token
+from src.services.db import save_store_token, get_store_token, get_session, create_or_update_session
 from src.services.shopify import get_order_by_number
 from src.services.openai import generate_ai_response
 
@@ -48,34 +48,35 @@ def callback():
                 return "Uygulama başarıyla kuruldu ve mağaza bilgileri kaydedildi! Bu pencereyi kapatabilirsiniz."
             else:
                 return f"Veritabanı hatası: {error_msg}"
-        print(f"Validating order: Shop={shop_url}, Order={order_number}, Email={email}")
-        
-        if not shop_url or not order_number or not email:
-            return jsonify({"valid": False, "error": "Sipariş No ve E-posta gereklidir"}), 400
-            
-        access_token = get_store_token(shop_url)
-        if not access_token:
-            if shop_url == Config.TEST_SHOP_URL and Config.TEST_ACCESS_TOKEN:
-                 access_token = Config.TEST_ACCESS_TOKEN
-            else:
-                print("Access token not found")
-                return jsonify({"valid": False, "error": "Mağaza yetkisi yok"}), 401
-                
-        # Email ile doğrulama yap
-        order = get_order_by_number(shop_url, access_token, order_number, email)
-        
-        if order:
-            customer = order.get('customer')
-            customer_name = customer.get('first_name', 'Müşteri') if customer else 'Müşteri'
-            print(f"Order found and verified: {order.get('id')}, Customer: {customer_name}")
-            return jsonify({"valid": True, "customer_name": customer_name})
         else:
-            print("Order not found or email mismatch")
-            return jsonify({"valid": False, "error": "Bilgiler eşleşmedi. Lütfen kontrol edin."})
+            return "Access Token alınamadı. Bir hata oluştu."
             
     except Exception as e:
-        print(f"Error in validate_order: {e}")
-        return jsonify({"valid": False, "error": "Sunucu hatası"}), 500
+        return f"Beklenmedik bir hata: {e}"
+
+@main_bp.route('/api/chat', methods=['POST'])
+def api_chat():
+    data = request.json
+    message = data.get('message')
+    shop_url = data.get('shop_url')
+    session_id = data.get('session_id')
+    
+    if not message or not shop_url or not session_id:
+        return jsonify({"error": "Missing parameters"}), 400
+        
+    # Oturum bilgisini çek
+    session_data = get_session(session_id)
+    
+    # Eğer session yoksa oluştur
+    if not session_data:
+        create_or_update_session(session_id, shop_url)
+        session_data = {'session_id': session_id, 'shop_url': shop_url}
+
+    # AI Cevabı (Streaming)
+    return Response(
+        stream_with_context(generate_ai_response(session_id, shop_url, message, session_data)),
+        mimetype='text/plain'
+    )
 
 @main_bp.route("/api/feedback", methods=["POST"])
 def api_feedback():
