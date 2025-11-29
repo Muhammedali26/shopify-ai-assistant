@@ -32,7 +32,32 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Geçmişi Yükle
+    loadHistory();
 });
+
+async function loadHistory() {
+    let sessionId = localStorage.getItem('chat_session_id');
+    if (!sessionId) return;
+
+    try {
+        const response = await fetch(`/api/chat/history?session_id=${sessionId}`);
+        if (response.ok) {
+            const history = await response.json();
+            // Mesajları sırayla ekle
+            history.forEach(msg => {
+                // System mesajlarını gösterme
+                if (msg.role !== 'system') {
+                    const sender = msg.role === 'user' ? 'user' : 'ai';
+                    addMessage(msg.content, sender);
+                }
+            });
+        }
+    } catch (error) {
+        console.error('History load error:', error);
+    }
+}
 
 function closeChat() {
     window.parent.postMessage('close-chat', '*');

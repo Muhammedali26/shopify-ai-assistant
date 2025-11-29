@@ -68,21 +68,6 @@ def api_chat():
     session_data = get_session(session_id)
     
     # Eğer session yoksa oluştur
-    if not session_data:
-        create_or_update_session(session_id, shop_url)
-        session_data = {'session_id': session_id, 'shop_url': shop_url}
-
-    # AI Cevabı (Streaming)
-    return Response(
-        stream_with_context(generate_ai_response(session_id, shop_url, message, session_data)),
-        mimetype='text/plain'
-    )
-
-@main_bp.route("/api/feedback", methods=["POST"])
-def api_feedback():
-    try:
-        data = request.json
-        shop_url = data.get("shop")
         order_id = data.get("order_id")
         rating = data.get("rating")
         message = data.get("message")
