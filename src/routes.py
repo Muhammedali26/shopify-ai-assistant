@@ -1,7 +1,7 @@
 from flask import Blueprint, request, redirect, jsonify, render_template, Response, stream_with_context
 import requests
 from src.config import Config
-from src.services.db import save_store_token, get_store_token, get_session, create_or_update_session
+from src.services.db import save_store_token, get_store_token, get_session, create_or_update_session, get_chat_history
 from src.services.shopify import get_order_by_number
 from src.services.openai import generate_ai_response
 
@@ -68,6 +68,30 @@ def api_chat():
     session_data = get_session(session_id)
     
     # Eğer session yoksa oluştur
+    if not session_data:
+        create_or_update_session(session_id, shop_url)
+        session_data = {'session_id': session_id, 'shop_url': shop_url}
+
+    # AI Cevabı (Streaming)
+    return Response(
+        stream_with_context(generate_ai_response(session_id, shop_url, message, session_data)),
+        mimetype='text/plain'
+    )
+
+@main_bp.route('/api/chat/history', methods=['GET'])
+def api_chat_history():
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({"error": "Missing session_id"}), 400
+        
+    history = get_chat_history(session_id, limit=20)
+    return jsonify(history)
+
+@main_bp.route("/api/feedback", methods=["POST"])
+def api_feedback():
+    try:
+        data = request.json
+        shop_url = data.get("shop")
         order_id = data.get("order_id")
         rating = data.get("rating")
         message = data.get("message")
