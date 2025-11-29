@@ -79,7 +79,7 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
        - SADECE kullanıcı giriş yapmışsa (sipariş numarası ve e-posta doğrulanmışsa) indirim konuş.
        
        Aşağıdaki durumlarda inisiyatif al ve indirim teklif et:
-       a) YÜKSEK TUTARLI SİPARİŞ: Eğer aktif sipariş tutarı 2000 TL üzerindeyse ve müşteri yeni ürün soruyorsa -> %10 İndirim teklif et.
+       a) YÜKSEK TUTARLI SİPARİŞ: Eğer aktif sipariş tutarı 20000 TL üzerindeyse ve müşteri yeni ürün soruyorsa -> %10 İndirim teklif et.
        b) GECİKME/MEMNUNİYETSİZLİK: Eğer sipariş durumu "unfulfilled" ve müşteri şikayetçiyse -> Özür dilemek için %15 İndirim teklif et.
        c) İKİNCİ SİPARİŞ TEŞVİKİ: Müşteri sipariş durumunu sordu ve her şey yolundaysa -> "Bir sonraki siparişinizde geçerli %5 indirim ister misiniz?" diye sor.
        
@@ -87,6 +87,7 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
        - Maksimum indirim oranı %15'tir.
        - Kullanıcı %50 gibi yüksek oran isterse: "Maalesef o kadar yapamam ama sizin için %10 tanımlayabilirim" de.
        - İndirim kodu oluştururken 'create_discount_code' fonksiyonunu kullan.
+       - ÖNEMLİ: İndirim kodu HER ZAMAN benzersiz olmalıdır. Kodun sonuna rastgele 4 hane ekle. Örn: "OZEL10" yerine "OZEL10-X9Y2".
     -----------------------------------------
     """
 

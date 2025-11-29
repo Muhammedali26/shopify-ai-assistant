@@ -171,6 +171,7 @@ def create_discount_code(shop_url, access_token, code, amount, type="fixed_amoun
     try:
         rule_response = requests.post(rule_url, headers=headers, json=rule_payload)
         if rule_response.status_code != 201:
+            print(f"Price Rule Error: {rule_response.status_code} - {rule_response.text}")
             return {"success": False, "message": f"Kural oluşturulamadı: {rule_response.text}"}
             
         price_rule_id = rule_response.json()['price_rule']['id']
