@@ -213,6 +213,13 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
                     if order:
                         # Başarılı! Oturumu güncelle
                         create_or_update_session(session_id, shop_url, order_num, email)
+                        
+                        # KRİTİK: Local session_data'yı güncelle ki sonraki adımlar (adres güncelleme vb.) bunu görsün
+                        if session_data is None:
+                            session_data = {}
+                        session_data['order_id'] = str(order_num)
+                        session_data['email'] = email
+                        
                         function_response = f"Doğrulama başarılı! Sayın {order.get('customer', {}).get('first_name', 'Müşterimiz')}, siparişinize eriştim. Nasıl yardımcı olabilirim?"
                     else:
                         function_response = "Doğrulama başarısız. Lütfen sipariş numarası ve e-posta adresinizi kontrol edin."
