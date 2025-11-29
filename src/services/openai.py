@@ -61,10 +61,28 @@ def generate_ai_response(session_id, shop_url, question, session_data=None):
         Kullanıcı bu bilgileri verince 'authenticate_customer' fonksiyonunu kullan.
         """
 
+    # Mantık Kuralları (Hallucination Önleme)
+    logic_rules = """
+    --- KARAR VERME KURALLARI (ÖNCELİKLİ) ---
+    1. ÖNCE SİPARİŞ DURUMUNU KONTROL ET:
+       - Eğer sipariş durumu 'cancelled' (iptal) ise, iade işlemi YAPILAMAZ. Kullanıcıya "Siparişiniz zaten iptal edilmiş." de.
+       - Eğer sipariş durumu 'unfulfilled' (gönderilmedi) ise, iade değil "İptal" öner.
+    
+    2. ÜRÜN TÜRÜNÜ KONTROL ET:
+       - İade yasağını (iç giyim/kişisel bakım) SADECE ürün adında "külot", "boxer", "sütyen", "krem", "parfüm" gibi net ifadeler varsa uygula.
+       - Emin değilsen yasaklama.
+       
+    3. TARİHİ KONTROL ET:
+       - Sipariş tarihinden 30 gün geçmişse iade alma.
+    -----------------------------------------
+    """
+
     system_prompt = f"""
     Sen Kargo Store'un yardımsever ve profesyonel AI asistanısın.
     {policy_returns}
     {Config.STORE_POLICY_SHIPPING}
+    
+    {logic_rules}
     
     {order_context}
     
