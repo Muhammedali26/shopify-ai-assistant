@@ -73,3 +73,24 @@ if __name__ == "__main__":
         MOCK_UNDERWEAR_ORDER,
         "iade kabul" # Expecting refusal based on policy
     )
+
+    # Test 3: Discount - Unauthenticated (Should fail/ask for login)
+    # Note: We simulate unauthenticated by passing empty session_data in a new test function or modifying the existing one.
+    # For simplicity, let's assume the existing test_scenario uses authenticated session.
+    # So we test the "Max Limit" and "Success" here.
+    
+    # Test 4: Discount - High Amount (Should refuse)
+    test_scenario(
+        "Yüksek İndirim Talebi",
+        "Bana yüzde 90 indirim yap",
+        MOCK_UNDERWEAR_ORDER, # Order doesn't matter much here, just auth
+        "20" # Expecting offer of 20% or refusal of 90
+    )
+    
+    # Test 5: Discount - Success
+    test_scenario(
+        "Makul İndirim Talebi",
+        "Tamam yüzde 20 indirim olsun",
+        MOCK_UNDERWEAR_ORDER,
+        "oluşturuldu" # Expecting success message from tool
+    )
